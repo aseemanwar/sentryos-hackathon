@@ -143,7 +143,7 @@ export function Banking() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#362552] bg-[#2a2438]">
         <div className="flex items-center gap-2">
           <DollarSign className="w-5 h-5 text-[#7553ff]" />
-          <span className="text-sm font-medium text-[#e8e4f0]">SentryBank</span>
+          <span className="text-sm font-medium text-[#e8e4f0]">Real Bank</span>
         </div>
         <Button
           onClick={loadAccountData}

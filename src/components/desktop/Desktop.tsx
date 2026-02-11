@@ -143,7 +143,7 @@ function DesktopContent() {
 
     openWindow({
       id: 'banking',
-      title: 'SentryBank',
+      title: 'Real Bank',
       icon: '🏦',
       x: 250,
       y: 100,
@@ -237,7 +237,7 @@ function DesktopContent() {
         />
         <DesktopIcon
           id="banking"
-          label="SentryBank"
+          label="Real Bank"
           icon="document"
           onDoubleClick={openBanking}
           selected={selectedIcon === 'banking'}
