@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect } from 'react'
-import * as Sentry from '@sentry/nextjs'
+import { logger, metrics } from '@/lib/sentry-utils'
 
 const Desktop = dynamic(
   () => import('@/components/desktop/Desktop').then(mod => mod.Desktop),
@@ -20,7 +20,7 @@ export default function Home() {
   useEffect(() => {
     const pageLoadTime = Date.now()
 
-    Sentry.logger.info('SentryOS page loaded', {
+    logger.info('SentryOS page loaded', {
       timestamp: new Date().toISOString(),
       userAgent: navigator.userAgent,
       viewport: {
@@ -29,18 +29,18 @@ export default function Home() {
       },
     })
 
-    Sentry.metrics.increment('page.loads', 1, {
+    metrics.increment('page.loads', 1, {
       tags: { page: 'home' }
     })
 
     // Track page visibility changes
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        Sentry.logger.info('Page became visible')
-        Sentry.metrics.increment('page.visibility.visible', 1)
+        logger.info('Page became visible')
+        metrics.increment('page.visibility.visible', 1)
       } else {
-        Sentry.logger.info('Page became hidden')
-        Sentry.metrics.increment('page.visibility.hidden', 1)
+        logger.info('Page became hidden')
+        metrics.increment('page.visibility.hidden', 1)
       }
     }
 
@@ -49,11 +49,11 @@ export default function Home() {
     return () => {
       const sessionDuration = Date.now() - pageLoadTime
 
-      Sentry.logger.info('Page unloading', {
+      logger.info('Page unloading', {
         sessionDuration,
       })
 
-      Sentry.metrics.distribution('page.session.duration', sessionDuration, {
+      metrics.distribution('page.session.duration', sessionDuration, {
         tags: { page: 'home' },
         unit: 'millisecond'
       })

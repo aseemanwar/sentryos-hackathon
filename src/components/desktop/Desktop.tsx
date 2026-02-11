@@ -8,7 +8,7 @@ import { Notepad } from './apps/Notepad'
 import { FolderView, FolderItem } from './apps/FolderView'
 import { Chat } from './apps/Chat'
 import { useState, useEffect } from 'react'
-import * as Sentry from '@sentry/nextjs'
+import { logger, metrics } from '@/lib/sentry-utils'
 
 const INSTALL_GUIDE_CONTENT = `# SentryOS Install Guide
 
@@ -61,33 +61,33 @@ function DesktopContent() {
 
   // Log desktop initialization
   useEffect(() => {
-    Sentry.logger.info('Desktop environment initialized', {
+    logger.info('Desktop environment initialized', {
       timestamp: new Date().toISOString(),
       userAgent: navigator.userAgent,
     })
 
-    Sentry.metrics.increment('desktop.initialized', 1, {
+    metrics.increment('desktop.initialized', 1, {
       tags: { component: 'desktop' }
     })
 
     return () => {
-      Sentry.logger.info('Desktop environment unmounted')
+      logger.info('Desktop environment unmounted')
     }
   }, [])
 
   // Track open windows count
   useEffect(() => {
-    Sentry.metrics.gauge('desktop.windows.open', windows.length, {
+    metrics.gauge('desktop.windows.open', windows.length, {
       tags: { component: 'desktop' }
     })
   }, [windows.length])
 
   const openInstallGuide = () => {
-    Sentry.logger.info('Opening Install Guide', {
+    logger.info('Opening Install Guide', {
       windowId: 'install-guide',
     })
 
-    Sentry.metrics.increment('desktop.window.opened', 1, {
+    metrics.increment('desktop.window.opened', 1, {
       tags: { window: 'install-guide' }
     })
     openWindow({
@@ -107,11 +107,11 @@ function DesktopContent() {
   }
 
   const openChatWindow = () => {
-    Sentry.logger.info('Opening Chat window', {
+    logger.info('Opening Chat window', {
       windowId: 'chat',
     })
 
-    Sentry.metrics.increment('desktop.window.opened', 1, {
+    metrics.increment('desktop.window.opened', 1, {
       tags: { window: 'chat' }
     })
 
@@ -132,11 +132,11 @@ function DesktopContent() {
   }
 
   const openAgentsFolder = () => {
-    Sentry.logger.info('Opening Agents folder', {
+    logger.info('Opening Agents folder', {
       windowId: 'agents-folder',
     })
 
-    Sentry.metrics.increment('desktop.window.opened', 1, {
+    metrics.increment('desktop.window.opened', 1, {
       tags: { window: 'agents-folder' }
     })
 
