@@ -7,6 +7,7 @@ import { DesktopIcon } from './DesktopIcon'
 import { Notepad } from './apps/Notepad'
 import { FolderView, FolderItem } from './apps/FolderView'
 import { Chat } from './apps/Chat'
+import { Banking } from './apps/Banking'
 import { useState, useEffect } from 'react'
 import { logger, metrics } from '@/lib/sentry-utils'
 
@@ -131,6 +132,31 @@ function DesktopContent() {
     })
   }
 
+  const openBanking = () => {
+    logger.info('Opening Banking app', {
+      windowId: 'banking',
+    })
+
+    metrics.increment('desktop.window.opened', 1, {
+      tags: { window: 'banking' }
+    })
+
+    openWindow({
+      id: 'banking',
+      title: 'SentryBank',
+      icon: '🏦',
+      x: 250,
+      y: 100,
+      width: 500,
+      height: 600,
+      minWidth: 400,
+      minHeight: 500,
+      isMinimized: false,
+      isMaximized: false,
+      content: <Banking />
+    })
+  }
+
   const openAgentsFolder = () => {
     logger.info('Opening Agents folder', {
       windowId: 'agents-folder',
@@ -208,6 +234,14 @@ function DesktopContent() {
           onDoubleClick={openChatWindow}
           selected={selectedIcon === 'chat'}
           onSelect={() => setSelectedIcon('chat')}
+        />
+        <DesktopIcon
+          id="banking"
+          label="SentryBank"
+          icon="document"
+          onDoubleClick={openBanking}
+          selected={selectedIcon === 'banking'}
+          onSelect={() => setSelectedIcon('banking')}
         />
       </div>
 
