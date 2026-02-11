@@ -1,10 +1,50 @@
 import * as Sentry from '@sentry/nextjs'
 import { NextRequest } from 'next/server'
 
+// SLO Definitions (Service Level Objectives)
+const SLO_CONFIG = {
+  'account.create': {
+    errorBudget: 0.01, // 99% success rate
+    p95Latency: 500, // 500ms
+    p99Latency: 1000, // 1000ms
+  },
+  'account.balance': {
+    errorBudget: 0.005, // 99.5% success rate
+    p95Latency: 200, // 200ms
+    p99Latency: 400, // 400ms
+  },
+  'transaction.list': {
+    errorBudget: 0.01, // 99% success rate
+    p95Latency: 300, // 300ms
+    p99Latency: 600, // 600ms
+  },
+  'transaction.transfer': {
+    errorBudget: 0.02, // 98% success rate (more tolerance for complex operation)
+    p95Latency: 1000, // 1000ms
+    p99Latency: 2000, // 2000ms
+  },
+}
+
 // Mock bank account data
 const accounts = new Map([
-  ['user123', { balance: 5420.50, accountNumber: '****1234', name: 'John Doe' }],
-  ['user456', { balance: 10000.00, accountNumber: '****5678', name: 'Jane Smith' }],
+  ['user123', {
+    userId: 'user123',
+    balance: 5420.50,
+    accountNumber: '****1234',
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    createdAt: '2024-01-15',
+    status: 'active'
+  }],
+  ['user456', {
+    userId: 'user456',
+    balance: 10000.00,
+    accountNumber: '****5678',
+    name: 'Jane Smith',
+    email: 'jane.smith@example.com',
+    createdAt: '2024-03-20',
+    status: 'active'
+  }],
 ])
 
 const transactions: any[] = [
@@ -14,6 +54,42 @@ const transactions: any[] = [
   { id: '4', date: '2025-02-08', description: 'Transfer to Savings', amount: -500.00, type: 'debit' },
   { id: '5', date: '2025-02-07', description: 'Freelance Payment', amount: 750.00, type: 'credit' },
 ]
+
+// Helper to check SLO breach
+function checkSLOBreach(operation: string, duration: number, success: boolean) {
+  const slo = SLO_CONFIG[operation as keyof typeof SLO_CONFIG]
+  if (!slo) return null
+
+  const breaches = {
+    latencyP95: duration > slo.p95Latency,
+    latencyP99: duration > slo.p99Latency,
+    errorRate: !success,
+  }
+
+  if (breaches.latencyP95 || breaches.latencyP99 || breaches.errorRate) {
+    Sentry.captureMessage(`SLO Breach: ${operation}`, {
+      level: 'warning',
+      tags: {
+        slo_breach: 'true',
+        operation,
+        breach_type: breaches.latencyP99 ? 'p99_latency' : breaches.latencyP95 ? 'p95_latency' : 'error_rate',
+      },
+      contexts: {
+        slo: {
+          operation,
+          duration,
+          success,
+          p95_threshold: slo.p95Latency,
+          p99_threshold: slo.p99Latency,
+          error_budget: slo.errorBudget,
+          breaches,
+        }
+      }
+    })
+  }
+
+  return breaches
+}
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -41,68 +117,378 @@ export async function POST(request: NextRequest) {
     Sentry.setTag('banking.user_id', userId)
 
     switch (action) {
-      case 'getBalance': {
-        const duration = Date.now() - startTime
+      case 'createAccount': {
+        // Start Sentry transaction for RED metrics
+        const transaction = Sentry.startTransaction({
+          op: 'banking.account.create',
+          name: 'Create Bank Account',
+          tags: { business_transaction: 'account_creation' }
+        })
 
-        // Simulate slow query sometimes (for performance monitoring)
-        if (Math.random() < 0.2) {
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          Sentry.captureMessage('Slow balance query detected', {
-            level: 'warning',
-            tags: { performance: 'slow_query' },
+        const operationStart = Date.now()
+        let success = false
+
+        try {
+          const { name, email, initialDeposit = 0 } = body
+
+          // Structured logging
+          console.log('[BANKING] Account creation started', {
+            timestamp: new Date().toISOString(),
+            operation: 'account.create',
+            email,
+            initialDeposit,
+          })
+
+          // Validation
+          if (!name || !email) {
+            const error = new Error('Name and email are required')
+            error.name = 'ValidationError'
+
+            console.error('[BANKING] Account creation validation failed', {
+              timestamp: new Date().toISOString(),
+              operation: 'account.create',
+              error: 'missing_fields',
+              name: !!name,
+              email: !!email,
+            })
+
+            Sentry.captureException(error, {
+              tags: {
+                error_type: 'validation',
+                operation: 'account.create',
+              }
+            })
+            throw error
+          }
+
+          // Check if email already exists
+          const existingAccount = Array.from(accounts.values()).find(acc => acc.email === email)
+          if (existingAccount) {
+            const error = new Error('Account with this email already exists')
+            error.name = 'DuplicateAccountError'
+
+            console.error('[BANKING] Account creation failed - duplicate', {
+              timestamp: new Date().toISOString(),
+              operation: 'account.create',
+              email,
+              error: 'duplicate_account',
+            })
+
+            Sentry.captureException(error, {
+              tags: {
+                error_type: 'duplicate_account',
+                operation: 'account.create',
+              }
+            })
+            throw error
+          }
+
+          // Simulate occasional service unavailability
+          if (Math.random() < 0.1) {
+            const error = new Error('Account creation service temporarily unavailable')
+            error.name = 'ServiceUnavailableError'
+
+            console.error('[BANKING] Account creation service unavailable', {
+              timestamp: new Date().toISOString(),
+              operation: 'account.create',
+              error: 'service_unavailable',
+            })
+
+            Sentry.captureException(error, {
+              tags: {
+                error_type: 'service_unavailable',
+                operation: 'account.create',
+              }
+            })
+            throw error
+          }
+
+          // Simulate slow account creation sometimes
+          if (Math.random() < 0.3) {
+            await new Promise(resolve => setTimeout(resolve, 800))
+          }
+
+          // Create account
+          const newUserId = `user${Date.now()}`
+          const accountNumber = `****${Math.floor(1000 + Math.random() * 9000)}`
+
+          const newAccount = {
+            userId: newUserId,
+            balance: initialDeposit,
+            accountNumber,
+            name,
+            email,
+            createdAt: new Date().toISOString(),
+            status: 'active'
+          }
+
+          accounts.set(newUserId, newAccount)
+
+          success = true
+          const duration = Date.now() - operationStart
+
+          // Structured logging - success
+          console.log('[BANKING] Account created successfully', {
+            timestamp: new Date().toISOString(),
+            operation: 'account.create',
+            userId: newUserId,
+            accountNumber,
+            duration,
+          })
+
+          // RED Metrics
+          Sentry.captureMessage('Account created', {
+            level: 'info',
+            tags: {
+              operation: 'account.create',
+              success: 'true',
+              business_event: 'account_created',
+            },
             contexts: {
-              timing: { duration: Date.now() - startTime }
+              RED: {
+                rate: 1,
+                error: 0,
+                duration,
+              },
+              account: {
+                userId: newUserId,
+                initialDeposit,
+              }
             }
           })
-        }
 
-        const account = accounts.get(userId)
-        if (!account) {
-          throw new Error('Account not found')
-        }
+          // Check SLO
+          checkSLOBreach('account.create', duration, success)
 
-        return Response.json({
-          success: true,
-          data: account,
-          duration
+          transaction.setStatus('ok')
+          transaction.setMeasurement('duration', duration, 'millisecond')
+          transaction.finish()
+
+          return Response.json({
+            success: true,
+            data: newAccount,
+            metrics: {
+              duration,
+              operation: 'account.create',
+            }
+          })
+
+        } catch (error) {
+          const duration = Date.now() - operationStart
+
+          transaction.setStatus('internal_error')
+          transaction.finish()
+
+          // Check SLO
+          checkSLOBreach('account.create', duration, success)
+
+          throw error
+        }
+      }
+
+      case 'getBalance': {
+        const transaction = Sentry.startTransaction({
+          op: 'banking.account.balance',
+          name: 'Get Account Balance',
+          tags: { business_transaction: 'balance_check' }
         })
+
+        const operationStart = Date.now()
+        let success = false
+
+        try {
+          console.log('[BANKING] Balance check started', {
+            timestamp: new Date().toISOString(),
+            operation: 'account.balance',
+            userId,
+          })
+
+          // Simulate slow query sometimes (for performance monitoring)
+          if (Math.random() < 0.2) {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+
+            console.warn('[BANKING] Slow balance query detected', {
+              timestamp: new Date().toISOString(),
+              operation: 'account.balance',
+              userId,
+            })
+          }
+
+          const account = accounts.get(userId)
+          if (!account) {
+            console.error('[BANKING] Account not found', {
+              timestamp: new Date().toISOString(),
+              operation: 'account.balance',
+              userId,
+              error: 'account_not_found',
+            })
+            throw new Error('Account not found')
+          }
+
+          success = true
+          const duration = Date.now() - operationStart
+
+          console.log('[BANKING] Balance retrieved successfully', {
+            timestamp: new Date().toISOString(),
+            operation: 'account.balance',
+            userId,
+            duration,
+          })
+
+          // RED Metrics
+          Sentry.captureMessage('Balance checked', {
+            level: 'info',
+            tags: {
+              operation: 'account.balance',
+              success: 'true',
+            },
+            contexts: {
+              RED: { rate: 1, error: 0, duration }
+            }
+          })
+
+          checkSLOBreach('account.balance', duration, success)
+
+          transaction.setStatus('ok')
+          transaction.setMeasurement('duration', duration, 'millisecond')
+          transaction.finish()
+
+          return Response.json({
+            success: true,
+            data: account,
+            metrics: { duration, operation: 'account.balance' }
+          })
+        } catch (error) {
+          const duration = Date.now() - operationStart
+          transaction.setStatus('internal_error')
+          transaction.finish()
+          checkSLOBreach('account.balance', duration, success)
+          throw error
+        }
       }
 
       case 'getTransactions': {
-        // Simulate occasional database timeout
-        if (Math.random() < 0.1) {
-          const error = new Error('Database connection timeout')
-          error.name = 'DatabaseTimeoutError'
-          Sentry.captureException(error, {
-            tags: { error_type: 'database_timeout' },
-            level: 'error'
+        const transaction = Sentry.startTransaction({
+          op: 'banking.transaction.list',
+          name: 'List Transactions',
+          tags: { business_transaction: 'transaction_list' }
+        })
+
+        const operationStart = Date.now()
+        let success = false
+
+        try {
+          console.log('[BANKING] Transaction list requested', {
+            timestamp: new Date().toISOString(),
+            operation: 'transaction.list',
+            userId,
           })
+
+          // Simulate occasional database timeout
+          if (Math.random() < 0.1) {
+            const error = new Error('Database connection timeout')
+            error.name = 'DatabaseTimeoutError'
+
+            console.error('[BANKING] Database timeout', {
+              timestamp: new Date().toISOString(),
+              operation: 'transaction.list',
+              userId,
+              error: 'database_timeout',
+            })
+
+            Sentry.captureException(error, {
+              tags: {
+                error_type: 'database_timeout',
+                operation: 'transaction.list',
+              }
+            })
+            throw error
+          }
+
+          success = true
+          const duration = Date.now() - operationStart
+
+          console.log('[BANKING] Transactions retrieved', {
+            timestamp: new Date().toISOString(),
+            operation: 'transaction.list',
+            userId,
+            count: transactions.length,
+            duration,
+          })
+
+          // RED Metrics
+          Sentry.captureMessage('Transactions listed', {
+            level: 'info',
+            tags: {
+              operation: 'transaction.list',
+              success: 'true',
+            },
+            contexts: {
+              RED: { rate: 1, error: 0, duration },
+              data: { count: transactions.length }
+            }
+          })
+
+          checkSLOBreach('transaction.list', duration, success)
+
+          transaction.setStatus('ok')
+          transaction.setMeasurement('duration', duration, 'millisecond')
+          transaction.finish()
+
+          return Response.json({
+            success: true,
+            data: transactions,
+            metrics: { duration, operation: 'transaction.list' }
+          })
+        } catch (error) {
+          const duration = Date.now() - operationStart
+          transaction.setStatus('internal_error')
+          transaction.finish()
+          checkSLOBreach('transaction.list', duration, success)
           throw error
         }
-
-        return Response.json({
-          success: true,
-          data: transactions
-        })
       }
 
       case 'transfer': {
         // Start a transaction for performance monitoring
         const transaction = Sentry.startTransaction({
-          op: 'banking.transfer',
+          op: 'banking.transaction.transfer',
           name: 'Money Transfer',
-          tags: { amount: amount?.toString() }
+          tags: {
+            amount: amount?.toString(),
+            business_transaction: 'money_transfer'
+          }
         })
 
+        const operationStart = Date.now()
+        let success = false
+
         try {
+          console.log('[BANKING] Transfer initiated', {
+            timestamp: new Date().toISOString(),
+            operation: 'transaction.transfer',
+            userId,
+            recipient,
+            amount,
+          })
           // Validation errors
           if (!amount || amount <= 0) {
             const error = new Error('Invalid transfer amount')
             error.name = 'ValidationError'
+
+            console.error('[BANKING] Transfer validation failed - amount', {
+              timestamp: new Date().toISOString(),
+              operation: 'transaction.transfer',
+              userId,
+              amount,
+              error: 'invalid_amount',
+            })
+
             Sentry.captureException(error, {
               tags: {
                 error_type: 'validation',
-                validation_field: 'amount'
+                validation_field: 'amount',
+                operation: 'transaction.transfer',
               },
               contexts: {
                 validation: { amount, reason: 'must be positive' }
@@ -114,10 +500,19 @@ export async function POST(request: NextRequest) {
           if (!recipient) {
             const error = new Error('Recipient is required')
             error.name = 'ValidationError'
+
+            console.error('[BANKING] Transfer validation failed - recipient', {
+              timestamp: new Date().toISOString(),
+              operation: 'transaction.transfer',
+              userId,
+              error: 'missing_recipient',
+            })
+
             Sentry.captureException(error, {
               tags: {
                 error_type: 'validation',
-                validation_field: 'recipient'
+                validation_field: 'recipient',
+                operation: 'transaction.transfer',
               }
             })
             throw error
@@ -208,14 +603,35 @@ export async function POST(request: NextRequest) {
           }
           transactions.unshift(newTransaction)
 
-          // Capture successful transfer event
+          success = true
+          const duration = Date.now() - operationStart
+
+          console.log('[BANKING] Transfer completed successfully', {
+            timestamp: new Date().toISOString(),
+            operation: 'transaction.transfer',
+            userId,
+            recipient,
+            amount,
+            transactionId: newTransaction.id,
+            newBalance: account.balance,
+            duration,
+          })
+
+          // RED Metrics
           Sentry.captureMessage('Transfer completed successfully', {
             level: 'info',
             tags: {
               event_type: 'transfer_success',
+              operation: 'transaction.transfer',
+              success: 'true',
               amount: amount.toString()
             },
             contexts: {
+              RED: {
+                rate: 1,
+                error: 0,
+                duration,
+              },
               transfer: {
                 from: userId,
                 to: recipient,
@@ -225,7 +641,11 @@ export async function POST(request: NextRequest) {
             }
           })
 
+          // Check SLO
+          checkSLOBreach('transaction.transfer', duration, success)
+
           transaction.setStatus('ok')
+          transaction.setMeasurement('duration', duration, 'millisecond')
           transaction.finish()
 
           return Response.json({
@@ -234,12 +654,32 @@ export async function POST(request: NextRequest) {
               transactionId: newTransaction.id,
               newBalance: account.balance,
               transaction: newTransaction
+            },
+            metrics: {
+              duration,
+              operation: 'transaction.transfer',
             }
           })
 
         } catch (error) {
+          const duration = Date.now() - operationStart
+
+          console.error('[BANKING] Transfer failed', {
+            timestamp: new Date().toISOString(),
+            operation: 'transaction.transfer',
+            userId,
+            recipient,
+            amount,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            duration,
+          })
+
           transaction.setStatus('internal_error')
           transaction.finish()
+
+          // Check SLO
+          checkSLOBreach('transaction.transfer', duration, success)
+
           throw error
         }
       }
