@@ -8,6 +8,7 @@ import { Notepad } from './apps/Notepad'
 import { FolderView, FolderItem } from './apps/FolderView'
 import { Chat } from './apps/Chat'
 import { Banking } from './apps/Banking'
+import { Monitoring } from './apps/Monitoring'
 import { useState, useEffect } from 'react'
 import { logger, metrics } from '@/lib/sentry-utils'
 
@@ -157,6 +158,31 @@ function DesktopContent() {
     })
   }
 
+  const openMonitoring = () => {
+    logger.info('Opening Monitoring dashboard', {
+      windowId: 'monitoring',
+    })
+
+    metrics.increment('desktop.window.opened', 1, {
+      tags: { window: 'monitoring' }
+    })
+
+    openWindow({
+      id: 'monitoring',
+      title: 'Transaction Health',
+      icon: '📊',
+      x: 300,
+      y: 80,
+      width: 700,
+      height: 650,
+      minWidth: 600,
+      minHeight: 500,
+      isMinimized: false,
+      isMaximized: false,
+      content: <Monitoring />
+    })
+  }
+
   const openAgentsFolder = () => {
     logger.info('Opening Agents folder', {
       windowId: 'agents-folder',
@@ -242,6 +268,14 @@ function DesktopContent() {
           onDoubleClick={openBanking}
           selected={selectedIcon === 'banking'}
           onSelect={() => setSelectedIcon('banking')}
+        />
+        <DesktopIcon
+          id="monitoring"
+          label="Monitoring"
+          icon="document"
+          onDoubleClick={openMonitoring}
+          selected={selectedIcon === 'monitoring'}
+          onSelect={() => setSelectedIcon('monitoring')}
         />
       </div>
 
