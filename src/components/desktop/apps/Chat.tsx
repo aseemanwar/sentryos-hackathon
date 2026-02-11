@@ -71,10 +71,9 @@ export function Chat() {
     })
 
     return () => {
-      Sentry.logger.info('Chat component unmounted', {
-        messageCount: messages.length,
-      })
+      Sentry.logger.info('Chat component unmounted')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const scrollToBottom = () => {

@@ -71,9 +71,7 @@ function DesktopContent() {
     })
 
     return () => {
-      Sentry.logger.info('Desktop environment unmounted', {
-        totalWindows: windows.length,
-      })
+      Sentry.logger.info('Desktop environment unmounted')
     }
   }, [])
 
